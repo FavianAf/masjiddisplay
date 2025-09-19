@@ -1,70 +1,90 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+
+type Jadwal = {
+    imsak: string;
+    terbit: string;
+    subuh: string;
+    dzuhur: string;
+    ashar: string;
+    maghrib: string;
+    isya: string;
+};
 
 export default function SholatTime() {
-    const [imsak, setWaktuImsak] = useState<string>("");
-    const [terbit, setWaktuTerbit] = useState<string>("");
-    const [subuh, setWaktuSubuh] = useState<string>("");
-    const [dzuhur, setWaktuDzuhur] = useState<string>("");
-    const [ashar, setWaktuAshar] = useState<string>("");
-    const [maghrib, setWaktuMaghrib] = useState<string>("");
-    const [isya, setWaktuIsya] = useState<string>("");
+    const [jadwal, setJadwal] = useState<Jadwal | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchWaktuSholat = async () => {
-            const res = await fetch("/api/sholat");
+        let alive = true;
+        (async () => {
+        try {
+            const res = await fetch("/api/sholat", { cache: "no-store" });
+            if (!res.ok) throw new Error("Gagal mengambil data");
+
             const data = await res.json();
+            const j = data?.data?.jadwal;
+            if (alive) {
+                setJadwal({
+                    imsak: j?.imsak ?? "-",
+                    terbit: j?.terbit ?? "-",
+                    subuh: j?.subuh ?? "-",
+                    dzuhur: j?.dzuhur ?? "-",
+                    ashar: j?.ashar ?? "-",
+                    maghrib: j?.maghrib ?? "-",
+                    isya: j?.isya ?? "-",
+                });
+            }
+        } catch (e: any) {
+            if (alive) setError(e.message);
+        }
+        })();
 
-            setWaktuImsak(data.data.jadwal.imsak);
-            setWaktuTerbit(data.data.jadwal.terbit);
-            setWaktuSubuh(data.data.jadwal.subuh);
-            setWaktuDzuhur(data.data.jadwal.dzuhur);
-            setWaktuAshar(data.data.jadwal.ashar);
-            setWaktuMaghrib(data.data.jadwal.maghrib);
-            setWaktuIsya(data.data.jadwal.isya);
+        return () => {
+            alive = false;
         };
-        fetchWaktuSholat();
-
-        // const interval = setInterval(() => {
-        //     fetchWaktuSholat(); 
-        // }, 5 * 60 * 60 * 1000); // setiap 5 jam
-
-        // return () => clearInterval(interval);
     }, []);
 
+    if (error) {
+        return <div className="text-sm text-red-600">Error: {error}</div>;
+    }
+
+    if (!jadwal) {
+        return <SholatSkeleton />;
+    }
+
     return (
-        <div>
-            <main className="flex flex-row flex-wrap gap-6 items-start justify-center p-4 bg-white">
-                <div className="text-center">
-                    <div className="text-sm text-gray-500">Imsak</div>
-                    <h1 className="text-2xl font-semibold">{imsak}</h1>
-                </div>
-                <div className="text-center">
-                    <div className="text-sm text-gray-500">Terbit</div>
-                    <h1 className="text-2xl font-semibold">{terbit}</h1>
-                </div>
-                <div className="text-center">
-                    <div className="text-sm text-gray-500">Subuh</div>
-                    <h1 className="text-2xl font-semibold">{subuh}</h1>
-                </div>
-                <div className="text-center">
-                    <div className="text-sm text-gray-500">Dzuhur</div>
-                    <h1 className="text-2xl font-semibold">{dzuhur}</h1>
-                </div>
-                <div className="text-center">
-                    <div className="text-sm text-gray-500">Ashar</div>
-                    <h1 className="text-2xl font-semibold">{ashar}</h1>
-                </div>
-                <div className="text-center">
-                    <div className="text-sm text-gray-500">Maghrib</div>
-                    <h1 className="text-2xl font-semibold">{maghrib}</h1>
-                </div>
-                <div className="text-center">
-                    <div className="text-sm text-gray-500">Isya</div>
-                    <h1 className="text-2xl font-semibold">{isya}</h1>
-                </div>
-            </main>
+        <main className="flex flex-row flex-wrap gap-6 items-start justify-center p-4 bg-white">
+            <Item label="Imsak" value={jadwal.imsak} />
+            <Item label="Terbit" value={jadwal.terbit} />
+            <Item label="Subuh" value={jadwal.subuh} />
+            <Item label="Dzuhur" value={jadwal.dzuhur} />
+            <Item label="Ashar" value={jadwal.ashar} />
+            <Item label="Maghrib" value={jadwal.maghrib} />
+            <Item label="Isya" value={jadwal.isya} />
+        </main>
+    );
+}
+
+function Item({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="text-center">
+        <div className="text-sm text-gray-500">{label}</div>
+        <h1 className="text-2xl font-semibold">{value}</h1>
         </div>
+    );
+}
+
+function SholatSkeleton() {
+    return (
+        <main className="flex flex-row flex-wrap gap-6 items-start justify-center p-4 bg-white animate-pulse">
+        {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="text-center">
+            <div className="h-4 w-16 bg-gray-200 rounded mb-2" />
+            <div className="h-7 w-24 bg-gray-200 rounded" />
+            </div>
+        ))}
+        </main>
     );
 }

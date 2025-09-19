@@ -50,7 +50,7 @@ export default function Home() {
     useEffect(() => {
       const interval = setInterval(() => {
         setShowPage((prev) => !prev);
-      }, 10 * 1000); // 10 detik
+      }, 5 * 1000); // dalam detik
   
       return () => clearInterval(interval);
     }, []);
