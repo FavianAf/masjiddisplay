@@ -26,11 +26,11 @@ export default function SholatTime() {
         };
         fetchWaktuSholat();
 
-        const interval = setInterval(() => {
-            fetchWaktuSholat(); 
-        }, 5 * 60 * 60 * 1000); // setiap 5 jam
+        // const interval = setInterval(() => {
+        //     fetchWaktuSholat(); 
+        // }, 5 * 60 * 60 * 1000); // setiap 5 jam
 
-        return () => clearInterval(interval);
+        // return () => clearInterval(interval);
     }, []);
 
     return (
