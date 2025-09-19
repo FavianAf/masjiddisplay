@@ -1,0 +1,15 @@
+services:
+  next:
+    build:
+      context: .
+      target: dev
+    container_name: next-dev
+    ports:
+      - "3123:3123"
+    volumes:
+      - .:/app           # mount source code => hot reload
+      - /app/node_modules  # pakai node_modules di container
+    # environment:
+    #   CHOKIDAR_USEPOLLING: "true"   # stabilkan deteksi perubahan file
+    #   WATCHPACK_POLLING: "true"
+    restart: unless-stopped         # auto-start saat reboot
