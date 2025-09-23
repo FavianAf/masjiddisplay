@@ -16,29 +16,55 @@ export default function SholatTime() {
     const [jadwal, setJadwal] = useState<Jadwal | null>(null);
     const [error, setError] = useState<string | null>(null);
 
+    const getTodayString = () => {
+        const today = new Date();
+        return today.toISOString().split('T')[0];
+    };
+
+    const isCachedDataValid = (cachedDate: string) => {
+        return cachedDate === getTodayString();
+    };
+
     useEffect(() => {
         let alive = true;
-        (async () => {
-        try {
-            const res = await fetch("/api/sholat", { cache: "no-store" });
-            if (!res.ok) throw new Error("Gagal mengambil data");
-
-            const data = await res.json();
-            const j = data?.data?.jadwal;
+        
+        const cachedData = localStorage.getItem('sholatTimes');
+        const cacheDate = localStorage.getItem('sholatTimesDate');
+        
+        if (cachedData && cacheDate && isCachedDataValid(cacheDate)) {
             if (alive) {
-                setJadwal({
-                    imsak: j?.imsak ?? "-",
-                    terbit: j?.terbit ?? "-",
-                    subuh: j?.subuh ?? "-",
-                    dzuhur: j?.dzuhur ?? "-",
-                    ashar: j?.ashar ?? "-",
-                    maghrib: j?.maghrib ?? "-",
-                    isya: j?.isya ?? "-",
-                });
+                setJadwal(JSON.parse(cachedData));
             }
-        } catch (e: any) {
-            if (alive) setError(e.message);
+            return;
         }
+        
+        (async () => {
+            try {
+                const res = await fetch("/api/sholat", { cache: "no-store" });
+                if (!res.ok) throw new Error("Gagal mengambil data");
+
+                const data = await res.json();
+                const j = data?.data?.jadwal;
+                
+                if (alive) {
+                    const newJadwal = {
+                        imsak: j?.imsak ?? "-",
+                        terbit: j?.terbit ?? "-",
+                        subuh: j?.subuh ?? "-",
+                        dzuhur: j?.dzuhur ?? "-",
+                        ashar: j?.ashar ?? "-",
+                        maghrib: j?.maghrib ?? "-",
+                        isya: j?.isya ?? "-",
+                    };
+                    
+                    localStorage.setItem('sholatTimes', JSON.stringify(newJadwal));
+                    localStorage.setItem('sholatTimesDate', getTodayString());
+                    
+                    setJadwal(newJadwal);
+                }
+            } catch (e: any) {
+                if (alive) setError(e.message);
+            }
         })();
 
         return () => {

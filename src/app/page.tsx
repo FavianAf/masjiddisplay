@@ -5,6 +5,7 @@ import Clock from '@/components/clock';
 import SholatTime from '@/components/sholatTime';
 import BlackoutScreen from '@/components/BlackoutScreen';
 import Countdown from '@/components/Countdown';
+import Laporan from '@/components/Laporan';
 import { getCurrentTime } from '@/lib/getCurrentTime';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -19,6 +20,15 @@ export default function Home() {
     const waktuSholat = new Date();
     waktuSholat.setHours(14, 10, 0, 0);
 
+    useEffect(() => {
+      const fetchWaktuSholat = async () => {
+        const res = await fetch("/api/sholat");
+        fetchWaktuSholat();
+                const interval = setInterval(() => {
+            fetchWaktuSholat(); 
+        }, 5 * 60 * 60 * 1000); // setiap 5 jam
+      }
+      }, []);
 
     // Update current time setiap detik
     useEffect(() => {
@@ -95,7 +105,7 @@ export default function Home() {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.5 }}
               >
-                <h1 className="text-4xl font-bold">Test</h1>
+                <Laporan />
               </motion.div>
             ) : (
               <motion.div
