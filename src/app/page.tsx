@@ -8,7 +8,6 @@ import Countdown from '@/components/Countdown';
 import Laporan from '@/components/Laporan';
 import { getCurrentTime } from '@/lib/getCurrentTime';
 import { motion, AnimatePresence } from 'framer-motion';
-import { i } from 'framer-motion/client';
 
 export default function Home() {
     const [waktuSekarang, setWaktuSekarang] = useState(new Date());
@@ -28,6 +27,7 @@ export default function Home() {
       const fetchWaktuSholat = async () => {
         const res = await fetch("/api/sholat");
         const data = await res.json();
+
         const subuh = new Date();
         subuh.setHours(Number(data?.data?.jadwal?.subuh.split(':')[0]), Number(data?.data?.jadwal?.subuh.split(':')[1]), 0, 0);
         const dzuhur = new Date();
@@ -53,7 +53,7 @@ export default function Home() {
         //   console.log("[TEST] Override jadwal:", arrayWaktuSholat[TARGET].toTimeString());
         // }
         // =======================================================
-        console.log('Waktu Sholat:', arrayWaktuSholat);
+        // console.log('Waktu Sholat:', arrayWaktuSholat);
         setJadwalArray(arrayWaktuSholat);
       }
 
@@ -94,8 +94,10 @@ export default function Home() {
       if (matchWaktuSholat) {
         setWaktuSholat(matchWaktuSholat);
         setIsWaktuSholat(true);
+      } else {
+        setIsWaktuSholat(false);
       }
-    }, [waktuSekarang]);
+    }, [waktuSekarang, jadwalArray]);
     
 
     /*
@@ -133,6 +135,7 @@ export default function Home() {
           onFinish={() => {
             setIsCountdownActive(false);
             setIsBlackout(true);
+            
             setTimeout(() => {
               setIsBlackout(false);
             }, menitKetikaSholat * 60 * 1000); // Durasi blackout dalam menit
