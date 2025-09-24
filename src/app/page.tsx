@@ -41,17 +41,17 @@ export default function Home() {
 
         const arrayWaktuSholat = [subuh, dzuhur, ashar, maghrib, isya];
         // ====== TEST MODE (hapus/disable saat production) ======
-        const TEST_MODE = true;                 // set ke false saat sudah tidak tes
-        const TARGET = 0; // 0=subuh, 1=dzuhur, 2=ashar, 3=maghrib, 4=isya
+        // const TEST_MODE = true;                 // set ke false saat sudah tidak tes
+        // const TARGET = 0; // 0=subuh, 1=dzuhur, 2=ashar, 3=maghrib, 4=isya
 
-        if (TEST_MODE) {
-          const soon = new Date();
-          soon.setSeconds(soon.getSeconds() + 7); // tembak 7 detik lagi
-          // NOTE: kalau logika kamu cocokkan detik==0, pakai:
-          // const soon = new Date(Date.now() + 10_000); soon.setSeconds(0, 0);
-          arrayWaktuSholat[TARGET] = soon;
-          console.log("[TEST] Override jadwal:", arrayWaktuSholat[TARGET].toTimeString());
-        }
+        // if (TEST_MODE) {
+        //   const soon = new Date();
+        //   soon.setSeconds(soon.getSeconds() + 7); // tembak 7 detik lagi
+        //   // NOTE: kalau logika kamu cocokkan detik==0, pakai:
+        //   // const soon = new Date(Date.now() + 10_000); soon.setSeconds(0, 0);
+        //   arrayWaktuSholat[TARGET] = soon;
+        //   console.log("[TEST] Override jadwal:", arrayWaktuSholat[TARGET].toTimeString());
+        // }
         // =======================================================
         console.log('Waktu Sholat:', arrayWaktuSholat);
         setJadwalArray(arrayWaktuSholat);
