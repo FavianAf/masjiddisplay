@@ -19,6 +19,7 @@ export default function Home() {
     const [showPage, setShowPage] = useState(false);
     const menitKetikaSholat = 1; // Durasi blackout dalam menit
     const menitKetikaIqomah = 1; // Durasi Iqomah dalam menit
+    const detikGantiTampilan = 10; // Durasi ganti tampilan dalam detik
 
     /* 
       useEffect: Ambil data waktu sholat dari API, dipanggil ketika mounted dan setiap 5 jam
@@ -101,7 +102,7 @@ export default function Home() {
     
 
     /*
-      Cek apakah sudah masuk waktu sholat
+      useEffect: Cek apakah sudah masuk waktu sholat
     */
     useEffect(() => {
         if (
@@ -114,16 +115,19 @@ export default function Home() {
     }, [waktuSekarang]);
 
     /*
-      Ganti halaman setiap sekian detik
+      useEffect: Ganti halaman setiap sekian detik
     */
     useEffect(() => {
       const interval = setInterval(() => {
         setShowPage((prev) => !prev);
-      }, 5 * 1000); // dalam detik
+      }, detikGantiTampilan * 1000); // dalam detik
   
       return () => clearInterval(interval);
     }, []);
 
+    /*
+      Logic untuk menentukan konten apa yang akan ditampilkan
+    */
     const waktuIqomah = new Date(waktuSholat.getTime() + menitKetikaIqomah * 60 * 1000); // Durasi Iqomah dalam menit
     let content;
     if (isBlackout) {
