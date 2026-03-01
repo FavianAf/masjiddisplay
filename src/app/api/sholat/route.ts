@@ -1,7 +1,33 @@
 import { NextResponse } from "next/server";
-import { getCurrentTime } from "@/lib/getCurrentTime";
 
-type SholatData = any;
+interface SholatData {
+    responseCode: string;
+    responseMessage: string;
+    responseData: {
+        server_time: string;
+        date: string;
+        location: string;
+        jadwal: {
+            imsak: string;
+            subuh: string;
+            terbit: string;
+            dzuhur: string;
+            ashar: string;
+            maghrib: string;
+            isya: string;
+        };
+        iqomah: {
+            imsak: string;
+            subuh: string;
+            terbit: string;
+            dzuhur: string;
+            ashar: string;
+            maghrib: string;
+            isya: string;
+        };
+        blackout_duration_minutes: number;
+    };
+}
 
 let cache:
     | { data: SholatData; expiresAt: number; dateKey: string }
@@ -9,17 +35,26 @@ let cache:
 let inFlight: Promise<SholatData> | null = null;
 
 function timezoneWIB() {
-    // YYYY-MM-DD di zona Asia/Jakarta
     const fmt = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Asia/Jakarta",
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
     });
-    return fmt.format(new Date()); // e.g. 2025-09-19
+    return fmt.format(new Date());
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+    const { searchParams } = new URL(request.url);
+    const masjid_id = searchParams.get('masjid_id');
+
+    if (!masjid_id) {
+        return NextResponse.json(
+            { error: 'masjid_id is required' },
+            { status: 400 }
+        );
+    }
+
     const now = Date.now();
     const todayKey = timezoneWIB();
 
@@ -35,11 +70,16 @@ export async function GET() {
     }
 
     inFlight = (async () => {
-        const { date, monthAngka, year } = getCurrentTime();
+        const apiUrl = process.env.API_BASE_URL || 'http://localhost:3000';
         const res = await fetch(
-            `https://api.myquran.com/v2/sholat/jadwal/1638/${year}/${monthAngka}/${date}`, // Surabaya 1638
-            { cache: "no-store" } 
+            `${apiUrl}/api/sholat/today?masjid_id=${masjid_id}`,
+            { cache: "no-store" }
         );
+        
+        if (!res.ok) {
+            throw new Error(`Backend API error: ${res.status}`);
+        }
+
         const data: SholatData = await res.json();
 
         cache = {

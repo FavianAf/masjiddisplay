@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { CountdownProps } from '@/types/countdown';
+import { Clock as ClockIcon } from 'lucide-react';
 
-export default function Countdown({ targetTime, onFinish }: CountdownProps) {
+export default function Countdown({ targetTime, sholatName, onFinish }: CountdownProps) {
     const [displaySeconds, setDisplaySeconds] = useState(0);
     const frameRef = useRef<number | null>(null);
 
@@ -44,9 +45,19 @@ export default function Countdown({ targetTime, onFinish }: CountdownProps) {
         return `${minutes}:${secs}`;
     };
 
+    const sholatNameDisplay = sholatName ? sholatName.toUpperCase() : '';
+
     return (
-        <div className="text-4xl text-black-400 font-bold text-center">
-            Iqomah Dalam: {formatTime(displaySeconds)}
+        <div className="glass p-6 rounded-2xl border border-white/10">
+            <div className="flex items-center gap-2 mb-3 text-white/40">
+                <ClockIcon size={16} />
+                <span className="text-xs font-bold tracking-widest uppercase">
+                    {sholatNameDisplay} DALAM
+                </span>
+            </div>
+            <div className="text-4xl font-bold font-mono tracking-tight text-center text-white">
+                {formatTime(displaySeconds)}
+            </div>
         </div>
     );
 }
