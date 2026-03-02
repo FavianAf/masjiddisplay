@@ -214,8 +214,17 @@ export default function Home() {
     const active = medias.filter(m =>
       m.is_active && isTimeInRange(currentTime, m.start_time, m.end_time)
     );
-    setActiveMedias(active);
-    setContentIndex(0);
+    
+    setActiveMedias(prev => {
+      const prevIds = prev.map(m => m.id).join(',');
+      const newIds = active.map(m => m.id).join(',');
+      
+      if (prevIds !== newIds) {
+        setContentIndex(0);
+      }
+      
+      return active;
+    });
   }, [medias, waktuSekarang]);
 
   useEffect(() => {
@@ -323,11 +332,7 @@ export default function Home() {
 
   const renderContent = () => {
     if (activeMedias.length === 0) {
-      return (
-        <div className="absolute inset-0 w-full h-full">
-          <Laporan onComplete={handleFinancialComplete} />
-        </div>
-      );
+      return <Laporan onComplete={handleFinancialComplete} />;
     }
 
     if (contentIndex < activeMedias.length) {
@@ -339,11 +344,7 @@ export default function Home() {
       );
     }
 
-    return (
-      <div className="absolute inset-0 w-full h-full">
-        <Laporan onComplete={handleFinancialComplete} />
-      </div>
-    );
+    return <Laporan onComplete={handleFinancialComplete} />;
   };
 
   return (

@@ -82,6 +82,7 @@ export default function Laporan({ onComplete }: FinancialReportProps) {
             clearTimeout(startTimer);
             cancelAnimationFrame(animationFrame);
         };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const formatCurrency = (amount: number) => {
