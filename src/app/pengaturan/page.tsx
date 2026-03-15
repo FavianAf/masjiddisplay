@@ -6,6 +6,7 @@ import { authStorage } from '@/lib/storage';
 import { Media, MediaLimits } from '@/types/media';
 import { Hadist } from '@/types/hadist';
 import { FinancialReport, FinancialSummary } from '@/types/laporan';
+import { RunningText } from '@/types/runningText';
 import { getMediaCountByType, generateYoutubeMediaName, validateTimeFormat } from '@/lib/mediaUtils';
 import MediaModal from '@/components/media/MediaModal';
 import MediaList from '@/components/media/MediaList';
@@ -17,6 +18,9 @@ import LaporanModal from '@/components/laporan/LaporanModal';
 import LaporanList from '@/components/laporan/LaporanList';
 import DeleteLaporanConfirmModal from '@/components/laporan/DeleteLaporanConfirmModal';
 import LaporanSummaryEditor from '@/components/laporan/LaporanSummaryEditor';
+import RunningTextModal from '@/components/runningText/RunningTextModal';
+import RunningTextList from '@/components/runningText/RunningTextList';
+import DeleteRunningTextConfirmModal from '@/components/runningText/DeleteRunningTextConfirmModal';
 
 interface Settings {
   masjid_id: string;
@@ -26,6 +30,7 @@ interface Settings {
   hadists: Hadist[];
   financial_reports: FinancialReport[];
   financial_summary: FinancialSummary;
+  running_texts: RunningText[];
   iqomah_subuh: number;
   iqomah_dzuhur: number;
   iqomah_ashar: number;
@@ -47,10 +52,11 @@ const defaultSettings: Settings = {
     monthly_expense: 0,
     last_updated: new Date().toISOString()
   },
+  running_texts: [],
   iqomah_subuh: 15,
   iqomah_dzuhur: 10,
   iqomah_ashar: 10,
-  iqomah_maghrib: 5,
+  iqomah_maghrib:5,
   iqomah_isya: 10,
   blackout_duration_minutes: 30,
   slide_duration_kegiatan_seconds: 10,
@@ -64,6 +70,7 @@ const limits: MediaLimits = {
 
 const HADIST_LIMIT = 20;
 const LAPORAN_LIMIT = 30;
+const RUNNING_TEXT_LIMIT = 5;
 
 export default function PengaturanPage() {
   const router = useRouter();
@@ -81,6 +88,9 @@ export default function PengaturanPage() {
   const [showLaporanModal, setShowLaporanModal] = useState(false);
   const [editingLaporan, setEditingLaporan] = useState<{ report: FinancialReport; index: number } | null>(null);
   const [showLaporanDeleteConfirm, setShowLaporanDeleteConfirm] = useState<{ index: number; note: string } | null>(null);
+  const [showRunningTextModal, setShowRunningTextModal] = useState(false);
+  const [editingRunningText, setEditingRunningText] = useState<{ runningText: RunningText; index: number } | null>(null);
+  const [showRunningTextDeleteConfirm, setShowRunningTextDeleteConfirm] = useState<{ index: number; text: string } | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({
     uploading: false,
@@ -121,6 +131,7 @@ export default function PengaturanPage() {
           hadists: data.responseData.hadists || [],
           financial_reports: data.responseData.financial_reports || [],
           financial_summary: data.responseData.financial_summary || defaultSettings.financial_summary,
+          running_texts: data.responseData.running_texts || [],
         });
         if (data.responseData.masjid_id) {
           await authStorage.setMasjidId(data.responseData.masjid_id);
@@ -228,6 +239,11 @@ export default function PengaturanPage() {
       // Validate financial reports limit
       if (settings.financial_reports.length > LAPORAN_LIMIT) {
         throw new Error(`Maksimal ${LAPORAN_LIMIT} laporan keuangan. Saat ini: ${settings.financial_reports.length}`);
+      }
+
+      // Validate running texts limit
+      if (settings.running_texts.length > RUNNING_TEXT_LIMIT) {
+        throw new Error(`Maksimal ${RUNNING_TEXT_LIMIT} running texts. Saat ini: ${settings.running_texts.length}`);
       }
 
       // Validate duration values (semua harus > 0)
@@ -363,44 +379,49 @@ export default function PengaturanPage() {
         }
         if (data.responseData?.financial_summary) {
           setSettings(prev => ({ ...prev, financial_summary: data.responseData.financial_summary }));
-        }
-      } else {
-        const payload = {
-          city_id: settings.city_id,
-          city_name: settings.city_name,
-          medias: settings.medias.map(m => ({
-            id: m.id,
-            media_type: m.media_type,
-            media_value: m.media_value,
-            media_name: m.media_name,
-            is_active: m.is_active,
-            start_time: m.start_time,
-            end_time: m.end_time,
-          })),
-          hadists: settings.hadists.map(h => ({
-            id: h.id,
-            text: h.text,
-            source: h.source,
-            is_active: h.is_active,
-          })),
-          financial_reports: settings.financial_reports.map(r => ({
-            id: r.id,
-            date: r.date,
-            income: r.income,
-            expense: r.expense,
-            note: r.note,
-            is_active: r.is_active,
-          })),
-          financial_summary: {
-            account_balance: settings.financial_summary.account_balance,
-            monthly_expense: settings.financial_summary.monthly_expense,
-          },
-          iqomah_subuh: settings.iqomah_subuh || 15,
-          iqomah_dzuhur: settings.iqomah_dzuhur || 10,
-          iqomah_ashar: settings.iqomah_ashar || 10,
-          iqomah_maghrib: settings.iqomah_maghrib || 5,
-          iqomah_isya: settings.iqomah_isya || 10,
-          blackout_duration_minutes: settings.blackout_duration_minutes || 30,
+         }
+       } else {
+         const payload = {
+           city_id: settings.city_id,
+           city_name: settings.city_name,
+           medias: settings.medias.map(m => ({
+             id: m.id,
+             media_type: m.media_type,
+             media_value: m.media_value,
+             media_name: m.media_name,
+             is_active: m.is_active,
+             start_time: m.start_time,
+             end_time: m.end_time,
+           })),
+           hadists: settings.hadists.map(h => ({
+             id: h.id,
+             text: h.text,
+             source: h.source,
+             is_active: h.is_active,
+           })),
+           financial_reports: settings.financial_reports.map(r => ({
+             id: r.id,
+             date: r.date,
+             income: r.income,
+             expense: r.expense,
+             note: r.note,
+             is_active: r.is_active,
+           })),
+           financial_summary: {
+             account_balance: settings.financial_summary.account_balance,
+             monthly_expense: settings.financial_summary.monthly_expense,
+           },
+           running_texts: settings.running_texts.map(rt => ({
+             id: rt.id,
+             text: rt.text,
+             is_active: rt.is_active,
+           })),
+           iqomah_subuh: settings.iqomah_subuh || 15,
+           iqomah_dzuhur: settings.iqomah_dzuhur || 10,
+           iqomah_ashar: settings.iqomah_ashar || 10,
+           iqomah_maghrib: settings.iqomah_maghrib || 5,
+           iqomah_isya: settings.iqomah_isya || 10,
+           blackout_duration_minutes: settings.blackout_duration_minutes || 30,
           slide_duration_kegiatan_seconds: settings.slide_duration_kegiatan_seconds || 10,
         };
 
@@ -440,6 +461,9 @@ export default function PengaturanPage() {
         }
         if (data.responseData?.financial_summary) {
           setSettings(prev => ({ ...prev, financial_summary: data.responseData.financial_summary }));
+        }
+        if (data.responseData?.running_texts) {
+          setSettings(prev => ({ ...prev, running_texts: data.responseData.running_texts }));
         }
       }
 
@@ -554,6 +578,40 @@ export default function PengaturanPage() {
 
   const handleUpdateFinancialSummary = (summary: FinancialSummary) => {
     setSettings(prev => ({ ...prev, financial_summary: summary }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleAddRunningText = (newRunningText: RunningText) => {
+    setSettings(prev => ({ ...prev, running_texts: [...prev.running_texts, newRunningText] }));
+    setShowRunningTextModal(false);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleEditRunningText = (updatedRunningText: RunningText, index: number) => {
+    const updated = [...settings.running_texts];
+    updated[index] = updatedRunningText;
+    setSettings(prev => ({ ...prev, running_texts: updated }));
+    setShowRunningTextModal(false);
+    setEditingRunningText(null);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleDeleteRunningText = (index: number) => {
+    const filtered = settings.running_texts.filter((_, i) => i !== index);
+    setSettings(prev => ({ ...prev, running_texts: filtered }));
+    setShowRunningTextDeleteConfirm(null);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleToggleRunningTextActive = (index: number) => {
+    const updated = [...settings.running_texts];
+    updated[index].is_active = !updated[index].is_active;
+    setSettings(prev => ({ ...prev, running_texts: updated }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleReorderRunningTexts = (newOrder: RunningText[]) => {
+    setSettings(prev => ({ ...prev, running_texts: newOrder }));
     setHasUnsavedChanges(true);
   };
 
@@ -772,6 +830,47 @@ export default function PengaturanPage() {
 
               <div className="mt-4 text-xs text-gray-500">
                 <span>Laporan Keuangan: {settings.financial_reports.length}/{LAPORAN_LIMIT}</span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-emerald-900">Running Text Management</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (settings.running_texts.length >= RUNNING_TEXT_LIMIT) {
+                      alert(`Maksimal ${RUNNING_TEXT_LIMIT} running texts`);
+                      return;
+                    }
+                    setEditingRunningText(null);
+                    setShowRunningTextModal(true);
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={settings.running_texts.length >= RUNNING_TEXT_LIMIT}
+                >
+                  + Tambah Running Text
+                </button>
+              </div>
+
+              <RunningTextList
+                runningTexts={settings.running_texts}
+                onReorder={handleReorderRunningTexts}
+                onEdit={(index) => {
+                  setEditingRunningText({ runningText: settings.running_texts[index], index });
+                  setShowRunningTextModal(true);
+                }}
+                onDelete={(index) => {
+                  setShowRunningTextDeleteConfirm({
+                    index,
+                    text: settings.running_texts[index].text,
+                  });
+                }}
+                onToggleActive={handleToggleRunningTextActive}
+              />
+
+              <div className="mt-4 text-xs text-gray-500">
+                <span>Running Text: {settings.running_texts.length}/{RUNNING_TEXT_LIMIT}</span>
               </div>
             </div>
 
@@ -1032,6 +1131,34 @@ export default function PengaturanPage() {
           }
         }}
         note={showLaporanDeleteConfirm?.note || ''}
+      />
+
+      <RunningTextModal
+        runningText={editingRunningText?.runningText}
+        index={editingRunningText?.index}
+        isOpen={showRunningTextModal}
+        onClose={() => {
+          setShowRunningTextModal(false);
+          setEditingRunningText(null);
+        }}
+        onSave={(runningText, index) => {
+          if (index !== undefined) {
+            handleEditRunningText(runningText, index);
+          } else {
+            handleAddRunningText(runningText);
+          }
+        }}
+      />
+
+      <DeleteRunningTextConfirmModal
+        isOpen={!!showRunningTextDeleteConfirm}
+        onCancel={() => setShowRunningTextDeleteConfirm(null)}
+        onConfirm={() => {
+          if (showRunningTextDeleteConfirm) {
+            handleDeleteRunningText(showRunningTextDeleteConfirm.index);
+          }
+        }}
+        text={showRunningTextDeleteConfirm?.text || ''}
       />
 
       {uploadProgress.uploading && (

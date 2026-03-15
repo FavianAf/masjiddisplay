@@ -14,6 +14,7 @@ import { MapPin, Quote, Clock as ClockIcon } from 'lucide-react';
 import { Media } from '@/types/media';
 import { Hadist } from '@/types/hadist';
 import { FinancialReport, FinancialSummary } from '@/types/laporan';
+import { RunningText } from '@/types/runningText';
 import { isTimeInRange, getCurrentTimeInHHMMSS, parseDateTimeToHHMMSS } from '@/lib/mediaUtils';
 
 interface SholatData {
@@ -49,6 +50,7 @@ interface MasjidSettings {
   hadists: Hadist[];
   financial_reports: FinancialReport[];
   financial_summary: FinancialSummary;
+  running_texts: RunningText[];
   iqomah_subuh: number;
   iqomah_dzuhur: number;
   iqomah_ashar: number;
@@ -108,6 +110,8 @@ export default function Home() {
     monthly_expense: 0,
     last_updated: new Date().toISOString()
   });
+  const [runningTexts, setRunningTexts] = useState<RunningText[]>([]);
+  const [activeRunningTexts, setActiveRunningTexts] = useState<RunningText[]>([]);
 
   const fetchSettings = async () => {
     try {
@@ -145,6 +149,9 @@ export default function Home() {
           last_updated: new Date().toISOString()
         };
 
+        // Parse running texts dan filter active ones
+        const fetchedRunningTexts = (settings.running_texts || []).filter(rt => rt.is_active);
+
         // Gunakan fallback jika tidak ada hadists dari API
         // Ambil 1 dari fallback jika hanya ada 1 hadist dari API (minimum 2 hadits)
         let finalHadists: Hadist[];
@@ -163,6 +170,8 @@ export default function Home() {
         setActiveHadists(finalHadists);
         setFinancialReports(fetchedReports);
         setFinancialSummary(fetchedSummary);
+        setRunningTexts(fetchedRunningTexts);
+        setActiveRunningTexts(fetchedRunningTexts);
         setMasjidName('MASJID AL-MUTHMAINNAH');
         setLocation('Jl. Raya No. 123, Jakarta');
       }
@@ -540,7 +549,7 @@ export default function Home() {
       </div>
 
       {/* Footer: Ticker */}
-      <Ticker />
+      <Ticker messages={activeRunningTexts.map(rt => rt.text)} />
 
     </div>
     </>
