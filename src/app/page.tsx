@@ -1,16 +1,19 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Clock from '@/components/clock';
 import SholatTime from '@/components/sholatTime';
 import Laporan from '@/components/Laporan';
 import Ticker from '@/components/Ticker';
 import MediaCarousel from '@/components/MediaCarousel';
+import BlackoutScreen from '@/components/BlackoutScreen';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authStorage } from '@/lib/storage';
 import { MapPin, Quote, Clock as ClockIcon } from 'lucide-react';
 import { Media } from '@/types/media';
+import { Hadist } from '@/types/hadist';
+import { FinancialReport, FinancialSummary } from '@/types/laporan';
 import { isTimeInRange, getCurrentTimeInHHMMSS, parseDateTimeToHHMMSS } from '@/lib/mediaUtils';
 
 interface SholatData {
@@ -40,8 +43,12 @@ interface SholatData {
 
 interface MasjidSettings {
   masjid_id: string;
+  city_id: string;
   city_name: string;
   medias: Media[];
+  hadists: Hadist[];
+  financial_reports: FinancialReport[];
+  financial_summary: FinancialSummary;
   iqomah_subuh: number;
   iqomah_dzuhur: number;
   iqomah_ashar: number;
@@ -51,39 +58,56 @@ interface MasjidSettings {
   slide_duration_kegiatan_seconds?: number;
 }
 
-const hadith1 = `Barangsiapa yang shalat subuh berjamaah maka ia berada dalam jaminan Allah. (HR. Muslim)`;
-const hadith2 = `Shalat berjamaah lebih utama 27 derajat dibanding shalat sendirian. (HR. Bukhari & Muslim)`;
-const hadith3 = `Sebaik-baik manusia adalah yang paling bermanfaat bagi orang lain. (HR. Ahmad)`;
-const hadith4 = `Senyummu di hadapan saudaramu adalah sedekah. (HR. Tirmidzi)`;
-
-const HADITHS = [hadith1, hadith2, hadith3, hadith4];
+const FALLBACK_HADITHS: Hadist[] = [
+  {
+    id: 'fallback-1',
+    text: 'Barangsiapa yang shalat subuh berjamaah maka ia berada dalam jaminan Allah.',
+    source: 'HR. Muslim',
+    is_active: true
+  },
+  {
+    id: 'fallback-2',
+    text: 'Shalat berjamaah lebih utama 27 derajat dibanding shalat sendirian.',
+    source: 'HR. Bukhari & Muslim',
+    is_active: true
+  },
+  {
+    id: 'fallback-3',
+    text: 'Sebaik-baik manusia adalah yang paling bermanfaat bagi orang lain.',
+    source: 'HR. Ahmad',
+    is_active: true
+  },
+  {
+    id: 'fallback-4',
+    text: 'Senyummu di hadapan saudaramu adalah sedekah.',
+    source: 'HR. Tirmidzi',
+    is_active: true
+  }
+];
 
 export default function Home() {
   const router = useRouter();
   const [waktuSekarang, setWaktuSekarang] = useState(new Date());
   const [jadwalArray, setJadwalArray] = useState<Date[]>([]);
-  const [iqomahDurations, setIqomahDurations] = useState<Record<string, number>>({
-    imsak: 0,
-    subuh: 15,
-    terbit: 0,
-    dzuhur: 10,
-    ashar: 10,
-    maghrib: 5,
-    isya: 10,
-  });
+  const [iqomahArray, setIqomahArray] = useState<Date[]>([]);
   const [blackoutDurationMinutes, setBlackoutDurationMinutes] = useState(30);
-  const [isWaktuSholatSama, setIsWaktuSholatSama] = useState(false);
-  const [isBlackout, setIsBlackout] = useState(false);
+  const [sholatStatus, setSholatStatus] = useState<'NORMAL' | 'PRAYER_TIME' | 'IQOMAH' | 'BLACKOUT'>('NORMAL');
   const [currentSholatName, setCurrentSholatName] = useState<string>('');
-  const [isIqomahDone, setIsIqomahDone] = useState(false);
   const [hadithIndex, setHadithIndex] = useState(0);
   const [contentIndex, setContentIndex] = useState(0);
   const [masjidName, setMasjidName] = useState<string>('');
   const [location, setLocation] = useState<string>('');
-  const [waktuSholat, setWaktuSholat] = useState(new Date());
   const [slideKegiatanSeconds, setSlideKegiatanSeconds] = useState(10);
   const [medias, setMedias] = useState<Media[]>([]);
   const [activeMedias, setActiveMedias] = useState<Media[]>([]);
+  const [hadists, setHadists] = useState<Hadist[]>(FALLBACK_HADITHS);
+  const [activeHadists, setActiveHadists] = useState<Hadist[]>(FALLBACK_HADITHS);
+  const [financialReports, setFinancialReports] = useState<FinancialReport[]>([]);
+  const [financialSummary, setFinancialSummary] = useState<FinancialSummary>({
+    account_balance: 0,
+    monthly_expense: 0,
+    last_updated: new Date().toISOString()
+  });
 
   const fetchSettings = async () => {
     try {
@@ -108,18 +132,37 @@ export default function Home() {
           end_time: parseDateTimeToHHMMSS(media.end_time || '23:59:59'),
         }));
 
-        setIqomahDurations({
-          imsak: 0,
-          subuh: settings.iqomah_subuh,
-          terbit: 0,
-          dzuhur: settings.iqomah_dzuhur,
-          ashar: settings.iqomah_ashar,
-          maghrib: settings.iqomah_maghrib,
-          isya: settings.iqomah_isya,
-        });
+        // Parse hadists dan filter active ones
+        const fetchedHadists = (settings.hadists || []).filter(h => h.is_active);
+
+        // Parse financial reports dan filter active ones
+        const fetchedReports = (settings.financial_reports || []).filter(r => r.is_active);
+
+        // Get financial summary dengan fallback
+        const fetchedSummary = settings.financial_summary || {
+          account_balance: 0,
+          monthly_expense: 0,
+          last_updated: new Date().toISOString()
+        };
+
+        // Gunakan fallback jika tidak ada hadists dari API
+        // Ambil 1 dari fallback jika hanya ada 1 hadist dari API (minimum 2 hadits)
+        let finalHadists: Hadist[];
+        if (fetchedHadists.length === 0) {
+          finalHadists = FALLBACK_HADITHS;
+        } else if (fetchedHadists.length === 1) {
+          finalHadists = [...fetchedHadists, FALLBACK_HADITHS[0]];
+        } else {
+          finalHadists = fetchedHadists;
+        }
+
         setBlackoutDurationMinutes(settings.blackout_duration_minutes);
         setSlideKegiatanSeconds(settings.slide_duration_kegiatan_seconds || 10);
         setMedias(mediasWithParsedTime);
+        setHadists(finalHadists);
+        setActiveHadists(finalHadists);
+        setFinancialReports(fetchedReports);
+        setFinancialSummary(fetchedSummary);
         setMasjidName('MASJID AL-MUTHMAINNAH');
         setLocation('Jl. Raya No. 123, Jakarta');
       }
@@ -142,6 +185,7 @@ export default function Home() {
 
         const data: SholatData = await res.json();
         const j = data.responseData?.jadwal;
+        const iq = data.responseData?.iqomah;
 
         if (j) {
           const imsak = new Date();
@@ -161,6 +205,32 @@ export default function Home() {
 
           const arrayWaktuSholat = [imsak, subuh, terbit, dzuhur, ashar, maghrib, isya];
           setJadwalArray(arrayWaktuSholat);
+        }
+
+        if (iq) {
+          const iqomahImsak = new Date();
+          iqomahImsak.setHours(0, 0, 0, 0);
+          
+          const iqomahSubuh = new Date();
+          iqomahSubuh.setHours(Number(iq.subuh?.split(':')[0] || 0), Number(iq.subuh?.split(':')[1] || 0), 0, 0);
+          
+          const iqomahTerbit = new Date();
+          iqomahTerbit.setHours(0, 0, 0, 0);
+          
+          const iqomahDzuhur = new Date();
+          iqomahDzuhur.setHours(Number(iq.dzuhur?.split(':')[0] || 0), Number(iq.dzuhur?.split(':')[1] || 0), 0, 0);
+          
+          const iqomahAshar = new Date();
+          iqomahAshar.setHours(Number(iq.ashar?.split(':')[0] || 0), Number(iq.ashar?.split(':')[1] || 0), 0, 0);
+          
+          const iqomahMaghrib = new Date();
+          iqomahMaghrib.setHours(Number(iq.maghrib?.split(':')[0] || 0), Number(iq.maghrib?.split(':')[1] || 0), 0, 0);
+          
+          const iqomahIsya = new Date();
+          iqomahIsya.setHours(Number(iq.isya?.split(':')[0] || 0), Number(iq.isya?.split(':')[1] || 0), 0, 0);
+
+          const arrayIqomah = [iqomahImsak, iqomahSubuh, iqomahTerbit, iqomahDzuhur, iqomahAshar, iqomahMaghrib, iqomahIsya];
+          setIqomahArray(arrayIqomah);
         }
 
         if (data.responseData?.blackout_duration_minutes) {
@@ -192,22 +262,44 @@ export default function Home() {
 
   useEffect(() => {
     const sholatNames = ['imsak', 'subuh', 'terbit', 'dzuhur', 'ashar', 'maghrib', 'isya'];
-    const matchWaktuSholat = jadwalArray.find((d: Date) =>
-      d.getHours() === waktuSekarang.getHours() &&
-      d.getMinutes() === waktuSekarang.getMinutes() &&
-      d.getSeconds() === waktuSekarang.getSeconds()
-    );
 
-    if (matchWaktuSholat) {
-      setWaktuSholat(matchWaktuSholat);
-      setIsWaktuSholatSama(true);
-      const index = jadwalArray.indexOf(matchWaktuSholat);
-      setCurrentSholatName(sholatNames[index]);
-    } else {
-      setIsWaktuSholatSama(false);
-      setCurrentSholatName('');
+    if (jadwalArray.length !== 7 || iqomahArray.length !== 7) return;
+
+    let newStatus: 'NORMAL' | 'PRAYER_TIME' | 'IQOMAH' | 'BLACKOUT' = 'NORMAL';
+    let activeSholat = '';
+
+    for (let i = 0; i < jadwalArray.length; i++) {
+      const prayerTime = jadwalArray[i];
+      const iqomahTime = iqomahArray[i];
+
+      if (waktuSekarang.getTime() === prayerTime.getTime()) {
+        newStatus = 'PRAYER_TIME';
+        activeSholat = sholatNames[i];
+        break;
+      }
+
+      if (waktuSekarang.getTime() > prayerTime.getTime() && waktuSekarang.getTime() < iqomahTime.getTime()) {
+        newStatus = 'IQOMAH';
+        activeSholat = sholatNames[i];
+        break;
+      }
+
+      if (waktuSekarang.getTime() >= iqomahTime.getTime()) {
+        const blackoutEnd = new Date(iqomahTime.getTime() + blackoutDurationMinutes * 60 * 1000);
+
+        if (waktuSekarang.getTime() < blackoutEnd.getTime()) {
+          newStatus = 'BLACKOUT';
+          activeSholat = sholatNames[i];
+          break;
+        }
+      }
     }
-  }, [waktuSekarang, jadwalArray]);
+
+    setSholatStatus(newStatus);
+    if (activeSholat !== currentSholatName) {
+      setCurrentSholatName(activeSholat);
+    }
+  }, [waktuSekarang, jadwalArray, iqomahArray, blackoutDurationMinutes, currentSholatName]);
 
   useEffect(() => {
     const currentTime = getCurrentTimeInHHMMSS();
@@ -239,103 +331,97 @@ export default function Home() {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setHadithIndex((prev) => (prev + 1) % HADITHS.length);
+      setHadithIndex((prev) => (prev + 1) % activeHadists.length);
     }, 30000);
 
     return () => clearInterval(timer);
-  }, []);
-
-  const currentIqomahMinutes = currentSholatName ? iqomahDurations[currentSholatName] || 10 : 10;
-  const waktuIqomah = useMemo(() => new Date(waktuSholat.getTime() + currentIqomahMinutes * 60 * 1000), [waktuSholat, currentIqomahMinutes]);
-
-  useEffect(() => {
-    if (
-      !isBlackout &&
-      isWaktuSholatSama &&
-      !isIqomahDone &&
-      currentIqomahMinutes > 0
-    ) {
-      const timeDiff = (waktuIqomah.getTime() - waktuSekarang.getTime()) / 1000;
-      if (timeDiff <= 0) {
-        setIsIqomahDone(true);
-        setIsBlackout(true);
-        setTimeout(() => {
-          setIsBlackout(false);
-          setIsIqomahDone(false);
-        }, blackoutDurationMinutes * 60 * 1000);
-      }
-    }
-  }, [waktuSekarang, isWaktuSholatSama, isBlackout, isIqomahDone, waktuIqomah, currentIqomahMinutes, blackoutDurationMinutes]);
+  }, [activeHadists.length]);
 
   const handleFinancialComplete = () => {
     setContentIndex(0);
   };
 
-  const { nextPrayer, countdown, activePrayerName: memoActivePrayerName } = (() => {
+  const { countdown, label, activePrayerName: memoActivePrayerName } = (() => {
     const sholatNames = ['imsak', 'subuh', 'terbit', 'dzuhur', 'ashar', 'maghrib', 'isya'];
-    let next = sholatNames[0];
+    let targetTime: Date | null = null;
+    let displayLabel = '';
+    let nextPrayerName = sholatNames[0];
     let activeName = '';
 
-    const jadwalTimes = jadwalArray;
+    for (let i = 0; i < jadwalArray.length; i++) {
+      const pTime = jadwalArray[i];
+      const nextPTime = jadwalArray[(i + 1) % jadwalArray.length];
 
-    if (jadwalTimes.length === 7) {
-      for (let i = 0; i < jadwalTimes.length; i++) {
-        const pTime = jadwalTimes[i];
-        const nextPTime = jadwalTimes[(i + 1) % jadwalTimes.length];
-
-        if (waktuSekarang >= pTime && waktuSekarang < nextPTime) {
-          activeName = sholatNames[i];
-          next = sholatNames[(i + 1) % jadwalTimes.length];
-          break;
-        }
-      }
-
-      if (!activeName) {
-        const lastTime = jadwalTimes[jadwalTimes.length - 1];
-        const firstTime = jadwalTimes[0];
-        if (waktuSekarang >= lastTime || waktuSekarang < firstTime) {
-          activeName = 'isya';
-          next = 'imsak';
-        }
+      if (waktuSekarang >= pTime && waktuSekarang < nextPTime) {
+        activeName = sholatNames[i];
+        nextPrayerName = sholatNames[(i + 1) % jadwalArray.length];
+        break;
       }
     }
 
-    let targetTime = null;
-
-    if (isWaktuSholatSama && !isIqomahDone) {
-      targetTime = waktuIqomah;
-    } else {
-      const nextIndex = sholatNames.indexOf(next);
-      const nextTime = jadwalTimes[nextIndex];
-      if (nextTime) {
-        targetTime = nextTime < waktuSekarang
-          ? new Date(nextTime.getTime() + 24 * 60 * 60 * 1000)
-          : nextTime;
+    if (!activeName && jadwalArray.length === 7) {
+      const lastTime = jadwalArray[jadwalArray.length - 1];
+      const firstTime = jadwalArray[0];
+      if (waktuSekarang >= lastTime || waktuSekarang < firstTime) {
+        activeName = 'isya';
+        nextPrayerName = 'imsak';
       }
+    }
+
+    if (sholatStatus === 'IQOMAH' && currentSholatName) {
+      const index = sholatNames.indexOf(currentSholatName);
+      targetTime = iqomahArray[index];
+      displayLabel = `IQOMAH ${currentSholatName.toUpperCase()}`;
+    } else if (sholatStatus === 'NORMAL' || sholatStatus === 'PRAYER_TIME') {
+      for (let i = 0; i < jadwalArray.length; i++) {
+        if (waktuSekarang < jadwalArray[i]) {
+          targetTime = jadwalArray[i];
+          nextPrayerName = sholatNames[i];
+          break;
+        }
+      }
+      displayLabel = nextPrayerName ? nextPrayerName.toUpperCase() : '';
     }
 
     let countdownStr = '--:--:--';
     if (targetTime) {
       const diff = Math.floor((targetTime.getTime() - waktuSekarang.getTime()) / 1000);
-      const h = Math.floor(diff / 3600);
-      const m = Math.floor((diff % 3600) / 60);
-      const s = diff % 60;
-      countdownStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+      if (diff >= 0) {
+        const h = Math.floor(diff / 3600);
+        const m = Math.floor((diff % 3600) / 60);
+        const s = diff % 60;
+        countdownStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+      }
     }
 
     return {
-      nextPrayer: next.toUpperCase(),
       countdown: countdownStr,
+      label: displayLabel,
       activePrayerName: activeName
     };
   })();
 
   const renderContent = () => {
-    if (activeMedias.length === 0) {
-      return <Laporan onComplete={handleFinancialComplete} />;
+    const hasNoMedia = activeMedias.length === 0;
+    const hasNoReports = financialReports.length === 0;
+
+    if (hasNoMedia && hasNoReports) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-mosque-dark">
+          <img 
+            src="/Kaabah.jpg" 
+            alt="Kaabah" 
+            className="w-full h-full object-cover"
+          />
+        </div>
+      );
     }
 
-    if (contentIndex < activeMedias.length) {
+    if (hasNoMedia && !hasNoReports) {
+      return <Laporan reports={financialReports} summary={financialSummary} onComplete={handleFinancialComplete} />;
+    }
+
+    if (!hasNoMedia && contentIndex < activeMedias.length) {
       return (
         <MediaCarousel
           medias={activeMedias}
@@ -344,11 +430,26 @@ export default function Home() {
       );
     }
 
-    return <Laporan onComplete={handleFinancialComplete} />;
+    if (!hasNoReports) {
+      return <Laporan reports={financialReports} summary={financialSummary} onComplete={handleFinancialComplete} />;
+    }
+
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-mosque-dark">
+        <img 
+          src="/Kaabah.jpg" 
+          alt="Kaabah" 
+          className="w-full h-full object-cover"
+        />
+      </div>
+    );
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-mosque-dark text-white overflow-hidden p-6 gap-6">
+    <>
+      {sholatStatus === 'BLACKOUT' && <BlackoutScreen />}
+
+      <div className="h-screen w-screen flex flex-col bg-mosque-dark text-white overflow-hidden p-6 gap-6">
 
       {/* Top Section: Sidebar + Main Content */}
       <div className="flex-1 flex gap-8 min-h-0">
@@ -368,17 +469,19 @@ export default function Home() {
           <Clock />
 
           {/* Countdown Card */}
-          <div className="bg-white/5 p-6 rounded-2xl border border-white/10 mb-8">
-            <div className="flex items-center gap-2 mb-3 text-white/40">
-              <ClockIcon size={16} />
-              <span className="text-xs font-bold tracking-widest uppercase">
-                {isWaktuSholatSama && !isIqomahDone ? 'IQOMAH' : nextPrayer} DALAM
-              </span>
+          {sholatStatus !== 'BLACKOUT' && label && (
+            <div className="bg-white/5 p-6 rounded-2xl border border-white/10 mb-8">
+              <div className="flex items-center gap-2 mb-3 text-white/40">
+                <ClockIcon size={16} />
+                <span className="text-xs font-bold tracking-widest uppercase">
+                  {label} DALAM
+                </span>
+              </div>
+              <div className="text-4xl font-bold font-mono tracking-tight text-center">
+                {countdown}
+              </div>
             </div>
-            <div className="text-4xl font-bold font-mono tracking-tight text-center">
-              {countdown}
-            </div>
-          </div>
+          )}
 
           {/* Hadith Section */}
           <div className="mt-auto bg-white/5 p-6 rounded-2xl border border-white/10">
@@ -387,40 +490,49 @@ export default function Home() {
               <span className="text-xs font-bold tracking-widest uppercase">Hadits Hari Ini</span>
             </div>
             <AnimatePresence mode="wait">
-              <motion.p
-                key={hadithIndex}
+              <motion.div
+                key={activeHadists[hadithIndex]?.id || 'fallback'}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="text-lg italic font-medium leading-relaxed text-white/90"
+                className="text-lg italic font-medium leading-relaxed"
               >
-                &ldquo;{HADITHS[hadithIndex]}&rdquo;
-              </motion.p>
+                <p className="text-white/90">
+                  &ldquo;{activeHadists[hadithIndex]?.text}&rdquo;
+                </p>
+                {activeHadists[hadithIndex]?.source && (
+                  <p className="text-sm text-white/50 mt-2 not-italic font-normal">
+                    {activeHadists[hadithIndex].source}
+                  </p>
+                )}
+              </motion.div>
             </AnimatePresence>
           </div>
         </div>
 
-         {/* Main Content Area */}
-         <div className="flex-1 flex flex-col gap-6 min-h-0">
-           {/* Image/Video Section or Financial Report */}
-           <div className="flex-1 relative rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-mosque-dark">
-             {renderContent()}
-           </div>
+          {/* Main Content Area */}
+          <div className="flex-1 flex flex-col gap-6 min-h-0">
+            {/* Image/Video Section or Financial Report */}
+            <div className="flex-1 relative rounded-3xl overflow-hidden shadow-2xl bg-mosque-dark">
+              {renderContent()}
+            </div>
 
-          {/* Pagination Dots */}
-          <div className="flex justify-center gap-2 -mt-2">
-            {[...activeMedias, { id: 'laporan', media_type: 'laporan' as const }].map((item, idx) => (
-              <motion.div
-                key={item.id || 'laporan'}
-                className={`h-2 rounded-full ${contentIndex === idx ? 'bg-white w-8' : 'bg-white/20 w-2'}`}
-                animate={{
-                  width: contentIndex === idx ? 32 : 8,
-                  backgroundColor: contentIndex === idx ? "rgba(255,255,255, 1)" : "rgba(255,255,255, 0.2)"
-                }}
-                transition={{ duration: 0.3 }}
-              />
-            ))}
-          </div>
+          {/* Pagination Dots - Hanya tampilkan jika ada media atau ada laporan */}
+          {(activeMedias.length > 0 || financialReports.length > 0) && (
+            <div className="flex justify-center gap-2 -mt-2">
+              {[...activeMedias, { id: 'laporan', media_type: 'laporan' as const }].map((item, idx) => (
+                <motion.div
+                  key={item.id || 'laporan'}
+                  className={`h-2 rounded-full ${contentIndex === idx ? 'bg-white w-8' : 'bg-white/20 w-2'}`}
+                  animate={{
+                    width: contentIndex === idx ? 32 : 8,
+                    backgroundColor: contentIndex === idx ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.2)"
+                  }}
+                  transition={{ duration: 0.3 }}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Prayer Times Grid */}
           <SholatTime activePrayerName={memoActivePrayerName} />
@@ -431,5 +543,6 @@ export default function Home() {
       <Ticker />
 
     </div>
+    </>
   );
 }

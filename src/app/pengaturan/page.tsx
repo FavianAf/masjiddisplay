@@ -4,15 +4,28 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authStorage } from '@/lib/storage';
 import { Media, MediaLimits } from '@/types/media';
+import { Hadist } from '@/types/hadist';
+import { FinancialReport, FinancialSummary } from '@/types/laporan';
 import { getMediaCountByType, generateYoutubeMediaName, validateTimeFormat } from '@/lib/mediaUtils';
 import MediaModal from '@/components/media/MediaModal';
 import MediaList from '@/components/media/MediaList';
 import DeleteConfirmModal from '@/components/media/DeleteConfirmModal';
+import HadistModal from '@/components/hadist/HadistModal';
+import HadistList from '@/components/hadist/HadistList';
+import DeleteHadistConfirmModal from '@/components/hadist/DeleteHadistConfirmModal';
+import LaporanModal from '@/components/laporan/LaporanModal';
+import LaporanList from '@/components/laporan/LaporanList';
+import DeleteLaporanConfirmModal from '@/components/laporan/DeleteLaporanConfirmModal';
+import LaporanSummaryEditor from '@/components/laporan/LaporanSummaryEditor';
 
 interface Settings {
   masjid_id: string;
+  city_id: string;
   city_name: string;
   medias: Media[];
+  hadists: Hadist[];
+  financial_reports: FinancialReport[];
+  financial_summary: FinancialSummary;
   iqomah_subuh: number;
   iqomah_dzuhur: number;
   iqomah_ashar: number;
@@ -24,8 +37,16 @@ interface Settings {
 
 const defaultSettings: Settings = {
   masjid_id: '',
+  city_id: '',
   city_name: '',
   medias: [],
+  hadists: [],
+  financial_reports: [],
+  financial_summary: {
+    account_balance: 0,
+    monthly_expense: 0,
+    last_updated: new Date().toISOString()
+  },
   iqomah_subuh: 15,
   iqomah_dzuhur: 10,
   iqomah_ashar: 10,
@@ -41,6 +62,9 @@ const limits: MediaLimits = {
   file: 4,
 };
 
+const HADIST_LIMIT = 20;
+const LAPORAN_LIMIT = 30;
+
 export default function PengaturanPage() {
   const router = useRouter();
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -51,6 +75,12 @@ export default function PengaturanPage() {
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [editingMedia, setEditingMedia] = useState<{ media: Media; index: number } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ index: number; name: string } | null>(null);
+  const [showHadistModal, setShowHadistModal] = useState(false);
+  const [editingHadist, setEditingHadist] = useState<{ hadist: Hadist; index: number } | null>(null);
+  const [showHadistDeleteConfirm, setShowHadistDeleteConfirm] = useState<{ index: number; text: string } | null>(null);
+  const [showLaporanModal, setShowLaporanModal] = useState(false);
+  const [editingLaporan, setEditingLaporan] = useState<{ report: FinancialReport; index: number } | null>(null);
+  const [showLaporanDeleteConfirm, setShowLaporanDeleteConfirm] = useState<{ index: number; note: string } | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({
     uploading: false,
@@ -88,6 +118,9 @@ export default function PengaturanPage() {
           ...defaultSettings,
           ...data.responseData,
           medias: data.responseData.medias || [],
+          hadists: data.responseData.hadists || [],
+          financial_reports: data.responseData.financial_reports || [],
+          financial_summary: data.responseData.financial_summary || defaultSettings.financial_summary,
         });
         if (data.responseData.masjid_id) {
           await authStorage.setMasjidId(data.responseData.masjid_id);
@@ -186,20 +219,47 @@ export default function PengaturanPage() {
 
     try {
       const apiUrl = process.env.API_BASE_URL || 'http://localhost:3000';
-      
+
+      // Validate hadists limit
+      if (settings.hadists.length > HADIST_LIMIT) {
+        throw new Error(`Maksimal ${HADIST_LIMIT} hadist/quran. Saat ini: ${settings.hadists.length}`);
+      }
+
+      // Validate financial reports limit
+      if (settings.financial_reports.length > LAPORAN_LIMIT) {
+        throw new Error(`Maksimal ${LAPORAN_LIMIT} laporan keuangan. Saat ini: ${settings.financial_reports.length}`);
+      }
+
+      // Validate duration values (semua harus > 0)
+      const durationValidation = [
+        { name: 'Durasi Iqomah Subuh', value: settings.iqomah_subuh, min: 1, max: 60 },
+        { name: 'Durasi Iqomah Dzuhur', value: settings.iqomah_dzuhur, min: 1, max: 60 },
+        { name: 'Durasi Iqomah Ashar', value: settings.iqomah_ashar, min: 1, max: 60 },
+        { name: 'Durasi Iqomah Maghrib', value: settings.iqomah_maghrib, min: 1, max: 60 },
+        { name: 'Durasi Iqomah Isya', value: settings.iqomah_isya, min: 1, max: 60 },
+        { name: 'Durasi Blackout', value: settings.blackout_duration_minutes, min: 1, max: 120 },
+        { name: 'Durasi Slide', value: settings.slide_duration_kegiatan_seconds || 10, min: 1, max: 300 },
+      ];
+
+      for (const field of durationValidation) {
+        if (!field.value || field.value < field.min || field.value > field.max) {
+          throw new Error(`${field.name} harus antara ${field.min} sampai ${field.max}`);
+        }
+      }
+
       // Validate all medias time format before save
       for (const [idx, media] of settings.medias.entries()) {
         const startValidation = validateTimeFormat(media.start_time, 'Waktu mulai');
         if (!startValidation.valid) {
           throw new Error(`Media ${idx + 1}: ${startValidation.error}`);
         }
-        
+
         const endValidation = validateTimeFormat(media.end_time, 'Waktu selesai');
         if (!endValidation.valid) {
           throw new Error(`Media ${idx + 1}: ${endValidation.error}`);
         }
       }
-      
+
       const fileMedia = settings.medias.filter(m => m.media_type === 'file' && m.file);
       
       if (fileMedia.length > 0) {
@@ -229,6 +289,7 @@ export default function PengaturanPage() {
         const allMedias = prepareAllMedias(uploadResults);
         
         const payload = {
+          city_id: settings.city_id,
           city_name: settings.city_name,
           medias: allMedias.map(m => ({
             id: m.id,
@@ -239,15 +300,33 @@ export default function PengaturanPage() {
             start_time: m.start_time,
             end_time: m.end_time,
           })),
-          iqomah_subuh: settings.iqomah_subuh,
-          iqomah_dzuhur: settings.iqomah_dzuhur,
-          iqomah_ashar: settings.iqomah_ashar,
-          iqomah_maghrib: settings.iqomah_maghrib,
-          iqomah_isya: settings.iqomah_isya,
-          blackout_duration_minutes: settings.blackout_duration_minutes,
+          hadists: settings.hadists.map(h => ({
+            id: h.id,
+            text: h.text,
+            source: h.source,
+            is_active: h.is_active,
+          })),
+          financial_reports: settings.financial_reports.map(r => ({
+            id: r.id,
+            date: r.date,
+            income: r.income,
+            expense: r.expense,
+            note: r.note,
+            is_active: r.is_active,
+          })),
+          financial_summary: {
+            account_balance: settings.financial_summary.account_balance,
+            monthly_expense: settings.financial_summary.monthly_expense,
+          },
+          iqomah_subuh: settings.iqomah_subuh || 15,
+          iqomah_dzuhur: settings.iqomah_dzuhur || 10,
+          iqomah_ashar: settings.iqomah_ashar || 10,
+          iqomah_maghrib: settings.iqomah_maghrib || 5,
+          iqomah_isya: settings.iqomah_isya || 10,
+          blackout_duration_minutes: settings.blackout_duration_minutes || 30,
           slide_duration_kegiatan_seconds: settings.slide_duration_kegiatan_seconds || 10,
         };
-        
+
         console.log('=== DEBUG PAYLOAD (FILE + OTHERS) ===');
         console.log('All medias:', allMedias);
         allMedias.forEach((m, idx) => {
@@ -273,14 +352,21 @@ export default function PengaturanPage() {
         });
         
         const data = await res.json();
-        
+
         if (!res.ok) throw new Error(data.responseMessage || 'Update failed');
-        
+
         if (data.responseData?.medias) {
           setSettings(prev => ({ ...prev, medias: data.responseData.medias }));
         }
+        if (data.responseData?.financial_reports) {
+          setSettings(prev => ({ ...prev, financial_reports: data.responseData.financial_reports }));
+        }
+        if (data.responseData?.financial_summary) {
+          setSettings(prev => ({ ...prev, financial_summary: data.responseData.financial_summary }));
+        }
       } else {
         const payload = {
+          city_id: settings.city_id,
           city_name: settings.city_name,
           medias: settings.medias.map(m => ({
             id: m.id,
@@ -291,15 +377,33 @@ export default function PengaturanPage() {
             start_time: m.start_time,
             end_time: m.end_time,
           })),
-          iqomah_subuh: settings.iqomah_subuh,
-          iqomah_dzuhur: settings.iqomah_dzuhur,
-          iqomah_ashar: settings.iqomah_ashar,
-          iqomah_maghrib: settings.iqomah_maghrib,
-          iqomah_isya: settings.iqomah_isya,
-          blackout_duration_minutes: settings.blackout_duration_minutes,
+          hadists: settings.hadists.map(h => ({
+            id: h.id,
+            text: h.text,
+            source: h.source,
+            is_active: h.is_active,
+          })),
+          financial_reports: settings.financial_reports.map(r => ({
+            id: r.id,
+            date: r.date,
+            income: r.income,
+            expense: r.expense,
+            note: r.note,
+            is_active: r.is_active,
+          })),
+          financial_summary: {
+            account_balance: settings.financial_summary.account_balance,
+            monthly_expense: settings.financial_summary.monthly_expense,
+          },
+          iqomah_subuh: settings.iqomah_subuh || 15,
+          iqomah_dzuhur: settings.iqomah_dzuhur || 10,
+          iqomah_ashar: settings.iqomah_ashar || 10,
+          iqomah_maghrib: settings.iqomah_maghrib || 5,
+          iqomah_isya: settings.iqomah_isya || 10,
+          blackout_duration_minutes: settings.blackout_duration_minutes || 30,
           slide_duration_kegiatan_seconds: settings.slide_duration_kegiatan_seconds || 10,
         };
-        
+
         console.log('=== DEBUG PAYLOAD (NO FILE) ===');
         console.log('All medias:', settings.medias);
         settings.medias.forEach((m, idx) => {
@@ -325,14 +429,20 @@ export default function PengaturanPage() {
         });
         
         const data = await res.json();
-        
+
         if (!res.ok) throw new Error(data.responseMessage || 'Update failed');
-        
+
         if (data.responseData?.medias) {
           setSettings(prev => ({ ...prev, medias: data.responseData.medias }));
         }
+        if (data.responseData?.financial_reports) {
+          setSettings(prev => ({ ...prev, financial_reports: data.responseData.financial_reports }));
         }
-      
+        if (data.responseData?.financial_summary) {
+          setSettings(prev => ({ ...prev, financial_summary: data.responseData.financial_summary }));
+        }
+      }
+
       setHasUnsavedChanges(false);
       setSuccess('Pengaturan berhasil disimpan');
       setTimeout(() => setSuccess(''), 3000);
@@ -374,6 +484,79 @@ export default function PengaturanPage() {
     setHasUnsavedChanges(true);
   };
 
+  const handleAddHadist = (newHadist: Hadist) => {
+    setSettings(prev => ({ ...prev, hadists: [...prev.hadists, newHadist] }));
+    setShowHadistModal(false);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleEditHadist = (updatedHadist: Hadist, index: number) => {
+    const updated = [...settings.hadists];
+    updated[index] = updatedHadist;
+    setSettings(prev => ({ ...prev, hadists: updated }));
+    setShowHadistModal(false);
+    setEditingHadist(null);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleDeleteHadist = (index: number) => {
+    const filtered = settings.hadists.filter((_, i) => i !== index);
+    setSettings(prev => ({ ...prev, hadists: filtered }));
+    setShowHadistDeleteConfirm(null);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleToggleHadistActive = (index: number) => {
+    const updated = [...settings.hadists];
+    updated[index].is_active = !updated[index].is_active;
+    setSettings(prev => ({ ...prev, hadists: updated }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleReorderHadists = (newOrder: Hadist[]) => {
+    setSettings(prev => ({ ...prev, hadists: newOrder }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleAddLaporan = (newReport: FinancialReport) => {
+    setSettings(prev => ({ ...prev, financial_reports: [...prev.financial_reports, newReport] }));
+    setShowLaporanModal(false);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleEditLaporan = (updatedReport: FinancialReport, index: number) => {
+    const updated = [...settings.financial_reports];
+    updated[index] = updatedReport;
+    setSettings(prev => ({ ...prev, financial_reports: updated }));
+    setShowLaporanModal(false);
+    setEditingLaporan(null);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleDeleteLaporan = (index: number) => {
+    const filtered = settings.financial_reports.filter((_, i) => i !== index);
+    setSettings(prev => ({ ...prev, financial_reports: filtered }));
+    setShowLaporanDeleteConfirm(null);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleToggleLaporanActive = (index: number) => {
+    const updated = [...settings.financial_reports];
+    updated[index].is_active = !updated[index].is_active;
+    setSettings(prev => ({ ...prev, financial_reports: updated }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleReorderLaporan = (newOrder: FinancialReport[]) => {
+    setSettings(prev => ({ ...prev, financial_reports: newOrder }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateFinancialSummary = (summary: FinancialSummary) => {
+    setSettings(prev => ({ ...prev, financial_summary: summary }));
+    setHasUnsavedChanges(true);
+  };
+
   const handleLogout = async () => {
     await authStorage.clearAll();
     router.push('/login');
@@ -400,9 +583,24 @@ export default function PengaturanPage() {
   }
 
   return (
-    <div className="min-h-screen bg-mosque-dark text-white p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-2xl p-6 md:p-8">
+    <div className="h-screen bg-mosque-dark text-white p-4 md:p-8 flex flex-col overflow-hidden">
+      {/* Warning Banner - Sticky di atas (di luar card) */}
+      {hasUnsavedChanges && (
+        <div className="sticky top-0 z-30 bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 mb-4 rounded-lg shadow-md">
+          <div className="flex items-center justify-between max-w-4xl mx-auto">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">⚠️</span>
+              <span className="text-sm font-medium">
+                Anda memiliki perubahan yang belum disimpan.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="w-6xl mx-auto flex-1 flex flex-col min-h-0">
+        {/* Scrollable Card */}
+        <div className="bg-white shadow-2xl p-4 md:p-6 overflow-y-auto flex-1">
           <div className="flex justify-between items-center mb-8">
             <div>
               <h1 className="text-3xl font-bold text-emerald-900">Pengaturan Masjid</h1>
@@ -425,26 +623,6 @@ export default function PengaturanPage() {
           {success && (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">
               {success}
-            </div>
-          )}
-
-          {hasUnsavedChanges && (
-            <div className="sticky top-0 z-20 bg-yellow-50 border-b border-yellow-200 text-yellow-800 px-4 py-3">
-              <div className="flex items-center justify-between max-w-4xl mx-auto">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">⚠️</span>
-                  <span className="text-sm font-medium">
-                    Anda memiliki perubahan yang belum disimpan.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}
-                  className="text-sm text-yellow-700 hover:text-yellow-900 underline"
-                >
-                  Scroll ke tombol simpan
-                </button>
-              </div>
             </div>
           )}
 
@@ -511,35 +689,151 @@ export default function PengaturanPage() {
             </div>
 
             <div>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-emerald-900">Hadist/Quran Management</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (settings.hadists.length >= HADIST_LIMIT) {
+                      alert(`Maksimal ${HADIST_LIMIT} hadist/quran`);
+                      return;
+                    }
+                    setEditingHadist(null);
+                    setShowHadistModal(true);
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={settings.hadists.length >= HADIST_LIMIT}
+                >
+                  + Tambah Hadist
+                </button>
+              </div>
+
+              <HadistList
+                hadists={settings.hadists}
+                onReorder={handleReorderHadists}
+                onEdit={(index) => {
+                  setEditingHadist({ hadist: settings.hadists[index], index });
+                  setShowHadistModal(true);
+                }}
+                onDelete={(index) => {
+                  setShowHadistDeleteConfirm({
+                    index,
+                    text: settings.hadists[index].text,
+                  });
+                }}
+                onToggleActive={handleToggleHadistActive}
+              />
+
+              <div className="mt-4 text-xs text-gray-500">
+                <span>Hadist/Quran: {settings.hadists.length}/{HADIST_LIMIT}</span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-emerald-900">Laporan Keuangan Management</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (settings.financial_reports.length >= LAPORAN_LIMIT) {
+                      alert(`Maksimal ${LAPORAN_LIMIT} laporan keuangan`);
+                      return;
+                    }
+                    setEditingLaporan(null);
+                    setShowLaporanModal(true);
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={settings.financial_reports.length >= LAPORAN_LIMIT}
+                >
+                  + Tambah Laporan
+                </button>
+              </div>
+
+              <LaporanSummaryEditor
+                summary={settings.financial_summary}
+                onUpdate={handleUpdateFinancialSummary}
+              />
+
+              <LaporanList
+                reports={settings.financial_reports}
+                onReorder={handleReorderLaporan}
+                onEdit={(index) => {
+                  setEditingLaporan({ report: settings.financial_reports[index], index });
+                  setShowLaporanModal(true);
+                }}
+                onDelete={(index) => {
+                  setShowLaporanDeleteConfirm({
+                    index,
+                    note: settings.financial_reports[index].note,
+                  });
+                }}
+                onToggleActive={handleToggleLaporanActive}
+              />
+
+              <div className="mt-4 text-xs text-gray-500">
+                <span>Laporan Keuangan: {settings.financial_reports.length}/{LAPORAN_LIMIT}</span>
+              </div>
+            </div>
+
+            <div>
               <h3 className="text-lg font-semibold text-emerald-900 mb-4">Durasi Iqomah (Menit)</h3>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 {[
-                  { key: 'iqomah_subuh', label: 'Subuh' },
-                  { key: 'iqomah_dzuhur', label: 'Dzuhur' },
-                  { key: 'iqomah_ashar', label: 'Ashar' },
-                  { key: 'iqomah_maghrib', label: 'Maghrib' },
-                  { key: 'iqomah_isya', label: 'Isya' },
-                ].map((item) => (
-                  <div key={item.key}>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      {item.label}
-                    </label>
-                     <input
-                       type="number"
-                       min="0"
-                       max="60"
-                       value={settings[item.key as keyof Settings] as number}
-                       onChange={(e) => {
-                         setSettings({
-                           ...settings,
-                           [item.key]: parseInt(e.target.value) || 0,
-                         });
-                         setHasUnsavedChanges(true);
-                       }}
-                       className="w-full px-4 py-3 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition bg-white text-gray-900"
-                     />
-                  </div>
-                ))}
+                  { key: 'iqomah_subuh', label: 'Subuh', min: 1, max: 60 },
+                  { key: 'iqomah_dzuhur', label: 'Dzuhur', min: 1, max: 60 },
+                  { key: 'iqomah_ashar', label: 'Ashar', min: 1, max: 60 },
+                  { key: 'iqomah_maghrib', label: 'Maghrib', min: 1, max: 60 },
+                  { key: 'iqomah_isya', label: 'Isya', min: 1, max: 60 },
+                ].map((item) => {
+                  const value = settings[item.key as keyof Settings] as number;
+                  const valueStr = value.toString();
+                  const hasError = value < item.min || value > item.max;
+                  const hasNonNumericError = !/^\d*$/.test(valueStr);
+
+                  return (
+                    <div key={item.key}>
+                      <label className="block text-sm font-medium text-gray-900 mb-2">
+                        {item.label}
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={valueStr}
+                        onChange={(e) => {
+                          const inputValue = e.target.value;
+
+                          if (!/^\d*$/.test(inputValue)) {
+                            return;
+                          }
+
+                          const newValue = inputValue === '' ? null : parseInt(inputValue, 10);
+
+                          setSettings({
+                            ...settings,
+                            [item.key]: newValue ?? item.min,
+                          });
+                          setHasUnsavedChanges(true);
+                        }}
+                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition bg-white text-gray-900 ${
+                          hasError || hasNonNumericError
+                            ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
+                            : 'border-emerald-300 focus:ring-emerald-500 focus:border-emerald-500'
+                        }`}
+                      />
+                      {hasError && (
+                        <p className="text-sm text-red-600 mt-1">
+                          Nilai harus antara {item.min} sampai {item.max} menit
+                        </p>
+                      )}
+                      {hasNonNumericError && (
+                        <p className="text-sm text-red-600 mt-1">
+                          Hanya boleh diisi angka (0-9)
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -548,19 +842,36 @@ export default function PengaturanPage() {
                 Durasi Blackout Sholat (Menit)
               </label>
               <input
-                type="number"
-                min="0"
-                max="120"
-                value={settings.blackout_duration_minutes}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={settings.blackout_duration_minutes.toString()}
                 onChange={(e) => {
+                  const inputValue = e.target.value;
+
+                  if (!/^\d*$/.test(inputValue)) {
+                    return;
+                  }
+
+                  const newValue = inputValue === '' ? null : parseInt(inputValue, 10);
+
                   setSettings({
                     ...settings,
-                    blackout_duration_minutes: parseInt(e.target.value) || 0,
+                    blackout_duration_minutes: newValue ?? 30,
                   });
                   setHasUnsavedChanges(true);
                 }}
-                className="w-full md:w-1/2 px-4 py-3 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition bg-white text-gray-900"
+                className={`w-full md:w-1/2 px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition bg-white text-gray-900 ${
+                  settings.blackout_duration_minutes < 1 || settings.blackout_duration_minutes > 120
+                    ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
+                    : 'border-emerald-300 focus:ring-emerald-500 focus:border-emerald-500'
+                }`}
               />
+              {(settings.blackout_duration_minutes < 1 || settings.blackout_duration_minutes > 120) && (
+                <p className="text-sm text-red-600 mt-1">
+                  Nilai harus antara 1 sampai 120 menit
+                </p>
+              )}
               <p className="text-sm text-gray-600 mt-1">Durasi layar hitam saat waktu sholat</p>
             </div>
 
@@ -569,47 +880,71 @@ export default function PengaturanPage() {
                 Durasi Slide Kegiatan (Detik)
               </label>
               <input
-                type="number"
-                min="5"
-                max="60"
-                value={settings.slide_duration_kegiatan_seconds || 10}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={(settings.slide_duration_kegiatan_seconds || 10).toString()}
                 onChange={(e) => {
+                  const inputValue = e.target.value;
+
+                  if (!/^\d*$/.test(inputValue)) {
+                    return;
+                  }
+
+                  const newValue = inputValue === '' ? null : parseInt(inputValue, 10);
+
                   setSettings({
                     ...settings,
-                    slide_duration_kegiatan_seconds: parseInt(e.target.value) || 10,
+                    slide_duration_kegiatan_seconds: newValue ?? 10,
                   });
                   setHasUnsavedChanges(true);
                 }}
-                className="w-full md:w-1/2 px-4 py-3 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition bg-white text-gray-900"
+                className={`w-full md:w-1/2 px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition bg-white text-gray-900 ${
+                  (settings.slide_duration_kegiatan_seconds || 10) < 1 || (settings.slide_duration_kegiatan_seconds || 10) > 300
+                    ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
+                    : 'border-emerald-300 focus:ring-emerald-500 focus:border-emerald-500'
+                }`}
               />
+              {((settings.slide_duration_kegiatan_seconds || 10) < 1 || (settings.slide_duration_kegiatan_seconds || 10) > 300) && (
+                <p className="text-sm text-red-600 mt-1">
+                  Nilai harus antara 1 sampai 300 detik
+                </p>
+              )}
               <p className="text-sm text-gray-600 mt-1">Durasi slide untuk Kajian dan Laporan (default: 10 detik)</p>
              </div>
 
-              <div className="sticky bottom-0 z-10 bg-white border-t border-gray-200 p-4 shadow-lg">
-                {settings.medias.some((m: Media) => m.file) && (
-                  <div className="mb-3 text-center text-yellow-700 text-sm bg-yellow-50 py-2 px-4 rounded-lg max-w-4xl mx-auto">
-                    ⚠️ Ada file yang belum diupload. Klik &quot;Simpan Pengaturan&quot; untuk upload & simpan.
-                  </div>
-                )}
-               
-               <div className="flex gap-4 max-w-4xl mx-auto">
-                 <button
-                   type="submit"
-                   disabled={saving}
-                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                 >
-                   {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
-                 </button>
-                 <button
-                   type="button"
-                   onClick={() => router.push('/')}
-                   className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-lg transition duration-200"
-                 >
-                   Kembali ke Display
-                 </button>
-               </div>
-             </div>
+              <div className="hidden">
+                <input type="submit" />
+              </div>
            </form>
+        </div>
+      </div>
+
+      {/* Footer Buttons - Di luar card, selalu terlihat */}
+      <div className="mt-4 bg-mosque-dark border-t border-white/10 p-4">
+        <div className="max-w-4xl mx-auto">
+          {settings.medias.some((m: Media) => m.file) && (
+            <div className="mb-3 text-center text-yellow-300 text-sm bg-yellow-900/30 py-2 px-4 rounded-lg">
+              ⚠️ Ada file yang belum diupload. Klik &quot;Simpan Pengaturan&quot; untuk upload & simpan.
+            </div>
+          )}
+          
+          <div className="flex gap-4">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition duration-200"
+            >
+              Kembali ke Display
+            </button>
+          </div>
         </div>
       </div>
 
@@ -641,6 +976,62 @@ export default function PengaturanPage() {
           }
         }}
         onCancel={() => setShowDeleteConfirm(null)}
+      />
+
+      <HadistModal
+        hadist={editingHadist?.hadist}
+        index={editingHadist?.index}
+        isOpen={showHadistModal}
+        onClose={() => {
+          setShowHadistModal(false);
+          setEditingHadist(null);
+        }}
+        onSave={(hadist, index) => {
+          if (index !== undefined) {
+            handleEditHadist(hadist, index);
+          } else {
+            handleAddHadist(hadist);
+          }
+        }}
+      />
+
+      <DeleteHadistConfirmModal
+        isOpen={showHadistDeleteConfirm !== null}
+        text={showHadistDeleteConfirm?.text || ''}
+        onConfirm={() => {
+          if (showHadistDeleteConfirm) {
+            handleDeleteHadist(showHadistDeleteConfirm.index);
+          }
+        }}
+        onCancel={() => setShowHadistDeleteConfirm(null)}
+      />
+
+      <LaporanModal
+        isOpen={showLaporanModal}
+        onClose={() => {
+          setShowLaporanModal(false);
+          setEditingLaporan(null);
+        }}
+        onSave={(report) => {
+          if (editingLaporan) {
+            handleEditLaporan(report, editingLaporan.index);
+          } else {
+            handleAddLaporan(report);
+          }
+        }}
+        report={editingLaporan?.report}
+        existingDates={settings.financial_reports.map(r => r.date).filter((_, i) => i !== editingLaporan?.index)}
+      />
+
+      <DeleteLaporanConfirmModal
+        isOpen={!!showLaporanDeleteConfirm}
+        onClose={() => setShowLaporanDeleteConfirm(null)}
+        onConfirm={() => {
+          if (showLaporanDeleteConfirm) {
+            handleDeleteLaporan(showLaporanDeleteConfirm.index);
+          }
+        }}
+        note={showLaporanDeleteConfirm?.note || ''}
       />
 
       {uploadProgress.uploading && (
